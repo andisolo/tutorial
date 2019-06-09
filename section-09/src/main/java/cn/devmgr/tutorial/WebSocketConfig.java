@@ -54,50 +54,37 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         @Override
         public Message<?> preSend(Message<?> message, MessageChannel channel) {
             StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-            if (log.isTraceEnabled()) {
-                log.trace("拦截器截获命令:" + accessor.getCommand());
+            if (accessor == null || accessor.getCommand() == null) {
+                throw new RuntimeException("获取 StompHeaderAccessor 失败");
             }
-
-            if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-                // websocket连接刚刚建立起来，需要验证用户身份；根据token识别用户
-                String token = null;
-                String requestHeader = accessor.getNativeHeader("Authorization").get(0);
-                if (requestHeader != null && requestHeader.startsWith("Bearer ")) {
-                    token = requestHeader.substring(7);
-                }
-                if (log.isTraceEnabled()) {
-                    log.trace("MyChannelInterceptorAdapter->preSend() ... " + requestHeader + "; token=" + token);
-                }
-                User user = null;
-                if (token == null) {
-                    user = new User("GUEST");
-                } else {
-                    // 把token转变为用户
-                    user = new User(token);
-                }
-                accessor.setUser(user);
+            log.trace("拦截器截获命令:" + accessor.getCommand());
+            switch (accessor.getCommand()) {
+                case CONNECT:
+                    // websocket连接刚刚建立起来，需要验证用户身份；根据token识别用户
+                    String requestHeader = accessor.getNativeHeader("Authorization").get(0);
+                    if (requestHeader != null && requestHeader.startsWith("Bearer ")) {
+                        requestHeader = requestHeader.substring(7);
+                    }
+                    log.info("用户" + requestHeader + "链接了服务器");
+                    User user;
+                    if (requestHeader == null || "".equals(requestHeader)) {
+                        throw new RuntimeException("没有token不允许链接");
+                    } else {
+                        if (requestHeader.equals("2345")) {
+                            throw new RuntimeException("不允许" + requestHeader + "链接");
+                        }
+                        // 把token转变为用户
+                        user = new User(requestHeader);
+                    }
+                    accessor.setUser(user);
+                    break;
+                case DISCONNECT:
+                    String authorization = accessor.getUser().getName();
+                    log.info("用户" + authorization + "断开了链接");
+                    break;
+                default:
             }
-
             return message;
-        }
-
-        /** 下面这几个方法用不到，在高版本的spring（5.0.7）中 ChannelInterceptor的方法上已经增加了default；不需要再实现了 **/
-
-        public void postSend(Message<?> message, MessageChannel channel, boolean sent) {
-        }
-
-        public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent, Exception ex) {
-        }
-
-        public boolean preReceive(MessageChannel channel) {
-            return true;
-        }
-
-        public Message<?> postReceive(Message<?> message, MessageChannel channel) {
-            return message;
-        }
-
-        public void afterReceiveCompletion(Message<?> message, MessageChannel channel, Exception ex) {
         }
     }
 
